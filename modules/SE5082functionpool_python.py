@@ -8,9 +8,9 @@ import matplotlib.pyplot as plt
 import struct
 
 #pyvisa.log_to_screen()
-rm = pyvisa.ResourceManager() # check what devices are connected
-rm.list_resources() # tell you names of connected devices
-SE5082 = rm.open_resource('GPIB0::10::INSTR') # connect to AWG
+# rm = pyvisa.ResourceManager() # check what devices are connected
+# rm.list_resources() # tell you names of connected devices
+# SE5082 = rm.open_resource('GPIB0::10::INSTR') # connect to AWG
 
 def idn(inputs = 0):
     out = SE5082.query('*RST;*STB?;*IDN?')

@@ -1,11 +1,11 @@
 import sys
 import numpy as np
-from PyQt5.QtWidgets import QToolButton, QFileDialog, QLabel,  QLineEdit, QComboBox, QSizePolicy, QTableWidget, QMainWindow, QApplication, QPushButton, QWidget, QAction, QTabWidget, QVBoxLayout, QGroupBox, QHBoxLayout, QGridLayout
-from PyQt5.QtGui import QIcon, QFont
+from PyQt5.QtWidgets import QMenu,QTableWidgetSelectionRange, QTableWidgetItem, QToolButton, QFileDialog, QLabel,  QLineEdit, QComboBox, QSizePolicy, QTableWidget, QMainWindow, QApplication, QPushButton, QWidget, QAction, QTabWidget, QVBoxLayout, QGroupBox, QHBoxLayout, QGridLayout
+from PyQt5.QtGui import QIcon, QFont, QCursor
 import csv
 import datetime
-from PyQt5.QtCore import pyqtSlot
-from functionpool import savedPara
+from PyQt5.QtCore import pyqtSlot, Qt, QPoint
+# from functionpool import savedPara
 now = datetime.datetime.now()
 
 
@@ -21,6 +21,7 @@ class MainGui(QMainWindow):
         self.width = 1000
         self.height = 300
         self.initUI()
+        self.columns = 3
 
     def initUI(self):
         self.setWindowTitle(self.title)
@@ -33,7 +34,7 @@ class MainGui(QMainWindow):
 class PulseInputButtons(QWidget):
     def __init__(self):
         super(PulseInputButtons, self).__init__()
-
+        self.columns = 3
         self.initpulsebuttons()
 
     def initpulsebuttons(self):
@@ -132,30 +133,43 @@ class PulseInputButtons(QWidget):
         return DAQbox
 
     def sequence(self):
-        self.columns = 3
-        self.rows = 5
-
+        row_names = ['Delay', 'F1_Ph', 'F1_TxGate', 'F1_PhRst', 'F1_UnBlank', 'Acq', 'Acq_phase' 'RX_Blank', 'Ext_Trig', 'CTRL',
+                     'Scope_Trig', 'RX_PhRst', 'RX_Phase', 'FHOP', 'AHOP']
+        self.rows = len(row_names)
         sequencelayout = QGridLayout()
         sequencebox = QGroupBox()
         sequencebox.setLayout(sequencelayout)
-        table_widget = QTableWidget(self.rows,self.columns)
-        sequencelayout.addWidget(table_widget,0,0)
+        self.table_widget = QTableWidget(self.rows,self.columns)
+        self.addcol_button = QPushButton('Add Column')
+        self.addcol_button.clicked.connect(self.onclick_addcolumn)
+
+        sequencelayout.addWidget(self.table_widget,0,0)
+        sequencelayout.addWidget(self.addcol_button)
+        # table_widget.setHorizontalHeaderLabels()
+        self.table_widget.setVerticalHeaderLabels(row_names)
+
+
 
         i=0
         j=0
         while i < self.rows:
 
             while j < self.columns:
-                self.sequence_options_i_j = QComboBox()
-                self.sequence_options_i_j.addItem('Option a')
-                self.sequence_options_i_j.addItem('Option b')
-                table_widget.setCellWidget(i,j,self.sequence_options_i_j)
+                it = QTableWidgetItem("{}-{}".format(i, j))
+                self.table_widget.setItem(i, j, it)
                 j=j+1
                 # print(j, 'added column')
             j=0
             i =i+1
             # print(i, 'added row')
+
+        self.table_widget.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.table_widget.customContextMenuRequested.connect(self.on_customContextMenuRequested)
+
+
         return sequencebox
+
+
 
     def SaveLoadButtons(self):
         SaveLoadbox = QGroupBox()
@@ -241,6 +255,9 @@ class PulseInputButtons(QWidget):
                                         DAQ_Nsample, DAQ_timeout)
         loaded.loadParameters()
         loaded.export()
+
+    def onclick_addcolumn(self):
+        self.table_widget.insertColumn(0)
         
 
     def setmode(self, text):
@@ -250,6 +267,31 @@ class PulseInputButtons(QWidget):
             self.colormap = self.gray
         if text == 'c':
             self.colormap = self.rainbow
+
+    @pyqtSlot(QPoint)
+    def on_customContextMenuRequested(self, pos):
+        print(pos)
+        it = self.table_widget.itemAt(pos)
+        if it is None:
+            return
+        print(it, it.row())
+        # # print(it, pos)
+        # if it is None: return
+        # c = it.column()
+        # # item_range = QTableWidgetSelectionRange(0, c, self.table_widget.rowCount()-1 , c)
+        # # self.table_widget.setRangeSelected(item_range, True)
+        #
+        menu = QMenu()
+        delete_column_action = menu.addAction("Delete Column")
+        add_column_action = menu.addAction('Add Column')
+        if it.row() == 0:
+            menu.addAction("Row 0")
+        action = menu.exec_(self.table_widget.viewport().mapToGlobal(pos))
+        if action == delete_column_action:
+            self.table_widget.removeColumn(it.column())
+        if action == add_column_action:
+            self.table_widget.insertColumn(it.column())
+
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
