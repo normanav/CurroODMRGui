@@ -1,10 +1,10 @@
 import sys
 import numpy as np
-from PyQt5.QtWidgets import QMenu,QTableWidgetSelectionRange, QTableWidgetItem, QToolButton, QFileDialog, QLabel,  QLineEdit, QComboBox, QSizePolicy, QTableWidget, QMainWindow, QApplication, QPushButton, QWidget, QAction, QTabWidget, QVBoxLayout, QGroupBox, QHBoxLayout, QGridLayout
+from PyQt5.QtWidgets import QDialog, QDialogButtonBox, QPlainTextEdit, QInputDialog, QMenu,QTableWidgetSelectionRange, QTableWidgetItem, QToolButton, QFileDialog, QLabel,  QLineEdit, QComboBox, QSizePolicy, QTableWidget, QMainWindow, QApplication, QPushButton, QWidget, QAction, QTabWidget, QVBoxLayout, QGroupBox, QHBoxLayout, QGridLayout
 from PyQt5.QtGui import QIcon, QFont, QCursor
 import csv
 import datetime
-from PyQt5.QtCore import pyqtSlot, Qt, QPoint
+from PyQt5.QtCore import pyqtSlot, Qt, QPoint, QDir
 # from functionpool import savedPara
 now = datetime.datetime.now()
 
@@ -54,6 +54,7 @@ class PulseInputButtons(QWidget):
         buttonbox.setLayout(grid)
         buttonbox.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         Sequence.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        buttonbox.setTitle('Instrument Parameters')
         layout = QHBoxLayout()
         layout.addWidget(buttonbox)
         layout.addWidget(Sequence)
@@ -133,21 +134,24 @@ class PulseInputButtons(QWidget):
         return DAQbox
 
     def sequence(self):
-        row_names = ['Delay', 'F1_Ph', 'F1_TxGate', 'F1_PhRst', 'F1_UnBlank', 'Acq', 'Acq_phase' 'RX_Blank', 'Ext_Trig', 'CTRL',
+        row_names = ['Delay', 'F1_Ph', 'F1_TxGate', 'F1_PhRst', 'F1_UnBlank', 'Acq', 'Acq_phase', 'RX_Blank', 'Ext_Trig', 'CTRL',
                      'Scope_Trig', 'RX_PhRst', 'RX_Phase', 'FHOP', 'AHOP']
         self.rows = len(row_names)
         sequencelayout = QGridLayout()
         sequencebox = QGroupBox()
         sequencebox.setLayout(sequencelayout)
-        self.table_widget = QTableWidget(self.rows,self.columns)
+        sequencebox.setTitle('Pulse Sequence Designer')
+        self.table_widget = QTableWidget(self.rows, self.columns)
         self.addcol_button = QPushButton('Add Column')
         self.addcol_button.clicked.connect(self.onclick_addcolumn)
+        self.dialog = QPushButton('Open Dialog')
+        self.dialog.clicked.connect(self.onclick_dialog)
 
         sequencelayout.addWidget(self.table_widget,0,0)
         sequencelayout.addWidget(self.addcol_button)
+        sequencelayout.addWidget(self.dialog)
         # table_widget.setHorizontalHeaderLabels()
         self.table_widget.setVerticalHeaderLabels(row_names)
-
 
 
         i=0
@@ -155,13 +159,14 @@ class PulseInputButtons(QWidget):
         while i < self.rows:
 
             while j < self.columns:
-                it = QTableWidgetItem("{}-{}".format(i, j))
+                it = QTableWidgetItem("__________".format(i, j))
                 self.table_widget.setItem(i, j, it)
                 j=j+1
                 # print(j, 'added column')
             j=0
             i =i+1
             # print(i, 'added row')
+
 
         self.table_widget.setContextMenuPolicy(Qt.CustomContextMenu)
         self.table_widget.customContextMenuRequested.connect(self.on_customContextMenuRequested)
@@ -176,11 +181,11 @@ class PulseInputButtons(QWidget):
         SaveLoadlayout = QHBoxLayout()
         SaveLoadbox.setLayout(SaveLoadlayout)
 
-        Savebutton = QPushButton('Save')
+        Savebutton = QPushButton('Save Params \n to File')
         ## by clicking save button, it will also load all the parameters to the device, waiting for execute
         Savebutton.clicked.connect(self.on_click_savetext)
         Savebutton.clicked.connect(self.on_click_loadparameters)
-        Loadbutton = QPushButton('Load')
+        Loadbutton = QPushButton('Load Params \n From File')
         Loadbutton.clicked.connect(self.on_click_loadtext)
 
         SaveLoadlayout.addWidget(Savebutton)
@@ -258,6 +263,15 @@ class PulseInputButtons(QWidget):
 
     def onclick_addcolumn(self):
         self.table_widget.insertColumn(0)
+        for i in range(self.rows):
+            value = QTableWidgetItem("__________".format(i, 0))
+            self.table_widget.setItem(i, 0, value)
+
+    def onclick_dialog(self):
+        text, ok = QInputDialog().getMultiLineText(self, "QInputDialog().getText()",
+                                          "User name:")
+        if ok and text:
+            print('text=', text)
         
 
     def setmode(self, text):
@@ -274,24 +288,123 @@ class PulseInputButtons(QWidget):
         it = self.table_widget.itemAt(pos)
         if it is None:
             return
-        print(it, it.row())
+        # print(it, it.row())
         # # print(it, pos)
         # if it is None: return
         # c = it.column()
         # # item_range = QTableWidgetSelectionRange(0, c, self.table_widget.rowCount()-1 , c)
         # # self.table_widget.setRangeSelected(item_range, True)
         #
+        rowname = self.table_widget.verticalHeaderItem(it.row()).text()
         menu = QMenu()
-        delete_column_action = menu.addAction("Delete Column")
-        add_column_action = menu.addAction('Add Column')
-        if it.row() == 0:
-            menu.addAction("Row 0")
-        action = menu.exec_(self.table_widget.viewport().mapToGlobal(pos))
-        if action == delete_column_action:
-            self.table_widget.removeColumn(it.column())
-        if action == add_column_action:
-            self.table_widget.insertColumn(it.column())
 
+        if it.row() == 0:
+            delay_action = menu.addAction("Delay Time")
+            lo_action = menu.addAction('__________')
+            delete_column_action = menu.addAction('Delete Column')
+            add_column_action = menu.addAction('Add Column')
+            action = menu.exec_(self.table_widget.viewport().mapToGlobal(pos))
+            if action == delay_action:
+                value = QTableWidgetItem("---------------".format(it.row(), it.column()))
+                self.table_widget.setItem(it.row(), it.column(), value)
+                return
+            if action == lo_action:
+                value = QTableWidgetItem("__________".format(it.row(), it.column()))
+                print(value)
+                self.table_widget.setItem(it.row(), it.column(), value)
+                return
+            if action == delete_column_action:
+                self.table_widget.removeColumn(it.column())
+            if action == add_column_action:
+                self.table_widget.insertColumn(it.column())
+                for i in range(self.rows):
+                    value = QTableWidgetItem("__________".format(i, it.column() - 1))
+                    self.table_widget.setItem(i, it.column() - 1, value)
+
+
+        hilorows = [2, 3, 4, 7, 8, 10, 11, 13, 14]
+        if it.row() in hilorows:
+            lo_action = menu.addAction("__________")
+            hi_action = menu.addAction('---------------')
+            delete_column_action = menu.addAction('Delete Column')
+            add_column_action = menu.addAction('Add Column')
+            action = menu.exec_(self.table_widget.viewport().mapToGlobal(pos))
+            if action == hi_action:
+                value = QTableWidgetItem("---------------".format(it.row(), it.column()))
+                self.table_widget.setItem(it.row(), it.column(), value)
+                return
+            if action == lo_action:
+                value = QTableWidgetItem("__________".format(it.row(), it.column()))
+                print(value)
+                self.table_widget.setItem(it.row(), it.column(), value)
+                return
+            if action == delete_column_action:
+                self.table_widget.removeColumn(it.column())
+            if action == add_column_action:
+                self.table_widget.insertColumn(it.column())
+                for i in range(self.rows):
+                    value = QTableWidgetItem("__________".format(i, it.column() - 1))
+                    self.table_widget.setItem(i, it.column() - 1, value)
+                    return
+
+
+
+        if it.row() == 5:
+            self.row5 = menu.addAction("~~~~~~")
+            action = menu.exec_(self.table_widget.viewport().mapToGlobal(pos))
+            if action == self.row5:
+                value = QTableWidgetItem("~~~~~~~".format(it.row(), it.column()))
+                self.table_widget.setItem(it.row(), it.column(), value)
+                return
+
+        xyphaserow = [1, 6, 12]
+        if it.row() in xyphaserow:
+            self.row6posx = menu.addAction('+X')
+            self.row6negx = menu.addAction('-X')
+            self.row6posy = menu.addAction('+Y')
+            self.row6negy = menu.addAction('-Y')
+            action = menu.exec_(self.table_widget.viewport().mapToGlobal(pos))
+            if action == self.row6posx:
+                value = QTableWidgetItem("+X".format(it.row(), it.column()))
+                self.table_widget.setItem(it.row(), it.column(), value)
+                return
+
+            if action == self.row6posy:
+                value = QTableWidgetItem("+Y".format(it.row(), it.column()))
+                self.table_widget.setItem(it.row(), it.column(), value)
+                return
+
+            if action == self.row6negx:
+                value = QTableWidgetItem("-X".format(it.row(), it.column()))
+                self.table_widget.setItem(it.row(), it.column(), value)
+                return
+
+            if action == self.row6negy:
+                value = QTableWidgetItem("-Y".format(it.row(), it.column()))
+                self.table_widget.setItem(it.row(), it.column(), value)
+                return
+
+
+        # if rowname == 'Delay':
+        #     delaytable_action = menu.addAction('Add Delay Table')
+
+
+class CustomDialog(QDialog):
+
+    def __init__(self, *args, **kwargs):
+        super(CustomDialog, self).__init__(*args, **kwargs)
+
+        self.setWindowTitle("HELLO!")
+
+        QBtn = QDialogButtonBox.Ok | QDialogButtonBox.Cancel
+
+        self.buttonBox = QDialogButtonBox(QBtn)
+        self.buttonBox.accepted.connect(self.accept)
+        self.buttonBox.rejected.connect(self.reject)
+
+        self.layout = QVBoxLayout()
+        self.layout.addWidget(self.buttonBox)
+        self.setLayout(self.layout)
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
