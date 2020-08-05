@@ -1,6 +1,6 @@
 import sys
 import numpy as np
-from PyQt5.QtWidgets import QDialog, QDialogButtonBox, QPlainTextEdit, QInputDialog, QMenu,QTableWidgetSelectionRange, QTableWidgetItem, QToolButton, QFileDialog, QLabel,  QLineEdit, QComboBox, QSizePolicy, QTableWidget, QMainWindow, QApplication, QPushButton, QWidget, QAction, QTabWidget, QVBoxLayout, QGroupBox, QHBoxLayout, QGridLayout
+from PyQt5.QtWidgets import QMenu, QTableWidgetItem, QFileDialog, QLabel,  QLineEdit, QComboBox, QSizePolicy, QTableWidget, QMainWindow, QApplication, QPushButton, QWidget, QAction, QTabWidget, QVBoxLayout, QGroupBox, QHBoxLayout, QGridLayout
 from PyQt5.QtGui import QIcon, QFont, QCursor
 import csv
 import datetime
@@ -18,10 +18,9 @@ class MainGui(QMainWindow):
         self.title = 'ODMR Control'
         self.left = 200
         self.top = 50
-        self.width = 1000
-        self.height = 300
+        self.width = 1215
+        self.height = 200
         self.initUI()
-        self.columns = 3
 
     def initUI(self):
         self.setWindowTitle(self.title)
@@ -34,7 +33,6 @@ class MainGui(QMainWindow):
 class PulseInputButtons(QWidget):
     def __init__(self):
         super(PulseInputButtons, self).__init__()
-        self.columns = 3
         self.initpulsebuttons()
 
     def initpulsebuttons(self):
@@ -44,20 +42,23 @@ class PulseInputButtons(QWidget):
         DAQ = self.DAQbuttons()
         Save = self.SaveLoadButtons()
         Sequence = self.sequence()
+        Times = self.timevars()
 
         grid.addWidget(MW,0,0)
         grid.addWidget(Laser, 1,0)
         grid.addWidget(DAQ, 2,0)
         grid.addWidget(Save, 3, 0)
+
         # grid.addWidget(Sequence, 0,1, 8,8)
         buttonbox = QGroupBox()
         buttonbox.setLayout(grid)
         buttonbox.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         Sequence.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         buttonbox.setTitle('Instrument Parameters')
-        layout = QHBoxLayout()
-        layout.addWidget(buttonbox)
-        layout.addWidget(Sequence)
+        layout = QGridLayout()
+        layout.addWidget(buttonbox, 0,0)
+        layout.addWidget(Sequence, 0, 1, 1, 3)
+        layout.addWidget(Times, 0, 4)
         self.setLayout(layout)
 
     def MWbuttons(self):
@@ -125,7 +126,7 @@ class PulseInputButtons(QWidget):
 
         Timeoutlabel = QLabel('Timeout (s)')
         self.Timeoutbutton = QLineEdit('60')
-
+        DAQbox.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         DAQlayout.addWidget(Samplelabel,0,0)
         DAQlayout.addWidget(self.Samplebutton,0,1)
         DAQlayout.addWidget(Timeoutlabel,1,0)
@@ -134,47 +135,163 @@ class PulseInputButtons(QWidget):
         return DAQbox
 
     def sequence(self):
-        row_names = ['Delay', 'F1_Ph', 'F1_TxGate', 'F1_PhRst', 'F1_UnBlank', 'Acq', 'Acq_phase', 'RX_Blank', 'Ext_Trig', 'CTRL',
-                     'Scope_Trig', 'RX_PhRst', 'RX_Phase', 'FHOP', 'AHOP']
-        self.rows = len(row_names)
+        self.col_names = ['AOM', 'MW', 'DAQ', 'Start Trigger']
+        self.row_name = ['Start Time', 'Pulse Duration', 'Instruction Code', 'Instruction Data']
+        self.row_names = self.row_name*3
+        self.cols = len(self.col_names)
+        self.rows = len(self.row_names)
+        self.seqarray = np.zeros((self.rows, self.cols))
+        self.seqarray[:] = np.nan
+        self.instructioncode = [0]*(int(self.rows/4))
+
+
         sequencelayout = QGridLayout()
         sequencebox = QGroupBox()
         sequencebox.setLayout(sequencelayout)
+
         sequencebox.setTitle('Pulse Sequence Designer')
-        self.table_widget = QTableWidget(self.rows, self.columns)
-        self.addcol_button = QPushButton('Add Column')
-        self.addcol_button.clicked.connect(self.onclick_addcolumn)
-        self.dialog = QPushButton('Open Dialog')
-        self.dialog.clicked.connect(self.onclick_dialog)
+        self.table_widget = QTableWidget(self.rows, self.cols)
+        sequencelayout.addWidget(self.table_widget,0,0, 1, 2)
 
-        sequencelayout.addWidget(self.table_widget,0,0)
-        sequencelayout.addWidget(self.addcol_button)
-        sequencelayout.addWidget(self.dialog)
-        # table_widget.setHorizontalHeaderLabels()
-        self.table_widget.setVerticalHeaderLabels(row_names)
-
-
-        i=0
-        j=0
-        while i < self.rows:
-
-            while j < self.columns:
-                it = QTableWidgetItem("__________".format(i, j))
-                self.table_widget.setItem(i, j, it)
-                j=j+1
-                # print(j, 'added column')
-            j=0
-            i =i+1
-            # print(i, 'added row')
-
+        self.table_widget.setHorizontalHeaderLabels(self.col_names)
+        self.table_widget.setVerticalHeaderLabels(self.row_names)
 
         self.table_widget.setContextMenuPolicy(Qt.CustomContextMenu)
         self.table_widget.customContextMenuRequested.connect(self.on_customContextMenuRequested)
+        for i in range(np.size(self.seqarray, 0)):
+            for j in range(np.size(self.seqarray,1)):
+                if np.isnan(self.seqarray[i][j]):
+                    self.table_widget.setItem(i,j,  QTableWidgetItem('None'))
+                else:
+                    self.table_widget.setItem(i,j, QTableWidgetItem(str(self.seqarray[i][j])))
+        self.table_widget.cellChanged.connect(self.onitemchanged)
 
+
+        self.saveseqbtn = QPushButton('Save Sequence')
+        self.loadseqbtn = QPushButton('Load Sequence')
+        sequencelayout.addWidget(self.saveseqbtn, 1, 0)
+        sequencelayout.addWidget(self.loadseqbtn, 1, 1)
+        self.saveseqbtn.clicked.connect(self.onclick_saveseq)
 
         return sequencebox
 
+    def timevars(self):
+        box = QGroupBox()
+        lay = QGridLayout()
+        box.setLayout(lay)
+        box.setTitle('Time Variables')
 
+        T1box, self.T1, self.T1units = self.timebox('T1')
+        self.T1.setText('40')
+        index = self.T1units.findText('us', Qt.MatchFixedString)
+        if index >= 0:
+            self.T1units.setCurrentIndex(index)
+
+        Cyclebox, self.Cycle, self.Cycleunits = self.timebox('Cycle')
+        self.Cycle.setText(str(10/3 * 5))
+        index = self.Cycleunits.findText('ns', Qt.MatchFixedString)
+        if index >= 0:
+            self.Cycleunits.setCurrentIndex(index)
+
+        Trigbox, self.T_Trigger, self.Trigunits = self.timebox('T_Trigger')
+        self.T_Trigger.setText('1')
+        index = self.Trigunits.findText('us', Qt.MatchFixedString)
+        if index >= 0:
+            self.Trigunits.setCurrentIndex(index)
+
+        LasDbox, self.Laser_D, self.LasDunits = self.timebox('Laser_D')
+        self.Laser_D.setText('300')
+        index = self.LasDunits.findText('ns', Qt.MatchFixedString)
+        if index >= 0:
+            self.LasDunits.setCurrentIndex(index)
+
+        LasRbox, self.Laser_R, self.LasRunits = self.timebox('Laser_R')
+        self.Laser_R.setText('200')
+        index = self.LasRunits.findText('ns', Qt.MatchFixedString)
+        if index >= 0:
+            self.LasRunits.setCurrentIndex(index)
+
+        MWDbox, self.MW_D, self.MWDunits = self.timebox('MW_D')
+        self.MW_D.setText('1')
+        index = self.MWDunits.findText('us', Qt.MatchFixedString)
+        if index >= 0:
+            self.MWDunits.setCurrentIndex(index)
+
+        readbox, self.readout_D, self.readunits = self.timebox('Readout_D')
+        self.readout_D.setText('1')
+        index = self.readunits.findText('us', Qt.MatchFixedString)
+        if index >= 0:
+            self.readunits.setCurrentIndex(index)
+
+        t90box, self.t_90, self.t90units = self.timebox('T_90')
+        self.t_90.setText('50')
+        index = self.t90units.findText('ns', Qt.MatchFixedString)
+        if index >= 0:
+            self.t90units.setCurrentIndex(index)
+
+        halftaubox, self.halftau, self.halftauunits = self.timebox('T_HalfTau')
+        self.halftau.setText('80')
+        index = self.halftauunits.findText('ns', Qt.MatchFixedString)
+        if index >= 0:
+            self.halftauunits.setCurrentIndex(index)
+
+        tdelaybox, self.t_delay, self.tdelayunits = self.timebox('T_delay')
+        self.t_delay.setText('1')
+        index = self.tdelayunits.findText('us', Qt.MatchFixedString)
+        if index >= 0:
+            self.tdelayunits.setCurrentIndex(index)
+
+        waitbox, self.t_wait, self.waitunits = self.timebox('T_wait')
+        self.t_wait.setText('1')
+        index = self.waitunits.findText('us', Qt.MatchFixedString)
+        if index >= 0:
+            self.waitunits.setCurrentIndex(index)
+
+        startbox, self.start_d, self.startunits = self.timebox('Start_D')
+        self.start_d.setText('1')
+        index = self.startunits.findText('us', Qt.MatchFixedString)
+        if index >= 0:
+            self.startunits.setCurrentIndex(index)
+
+
+        lay.addWidget(T1box, 0, 0)
+        lay.addWidget(Cyclebox, 0, 1)
+        lay.addWidget(Trigbox, 1, 0)
+        lay.addWidget(LasDbox, 1, 1)
+        lay.addWidget(LasRbox, 2, 0)
+        lay.addWidget(MWDbox, 2, 1)
+        lay.addWidget(t90box, 3, 0)
+        lay.addWidget(halftaubox, 3, 1)
+        lay.addWidget(tdelaybox, 4, 0)
+        lay.addWidget(waitbox, 4, 1)
+        lay.addWidget(readbox, 5, 0)
+        lay.addWidget(startbox, 5, 1)
+
+        box.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+
+
+        return box
+
+    def timebox(self, timename):
+
+        combo = QComboBox()
+        combo.addItem('ps')
+        combo.addItem('ns')
+        combo.addItem('us')
+        combo.addItem('ms')
+        combo.addItem('s')
+
+        box = QGroupBox()
+        lay = QHBoxLayout()
+        box.setTitle(timename)
+        timeedit = QLineEdit()
+        timeedit.setFixedWidth(50)
+        unitscombo = combo
+        box.setLayout(lay)
+        lay.addWidget(timeedit)
+        lay.addWidget(unitscombo)
+
+        return box, timeedit, unitscombo
 
     def SaveLoadButtons(self):
         SaveLoadbox = QGroupBox()
@@ -196,7 +313,7 @@ class PulseInputButtons(QWidget):
         options = QFileDialog.Options()
         options |= QFileDialog.DontUseNativeDialog
         fileName, _ = QFileDialog.getSaveFileName(self, "QFileDialog.getSaveFileName()", "",
-                                                  "All Files (*);;Text Files (*.txt)", options=options)
+                                                   "All Files (*);;Text Files (*.txt)", options=options)
         return fileName
 
     def loadtext(self):
@@ -256,23 +373,32 @@ class PulseInputButtons(QWidget):
         Laser_pw = float(QLineEdit.text(self.Laserbutton)) ## in mW
         DAQ_Nsample = int(QLineEdit.text(self.Samplebutton))
         DAQ_timeout = float(QLineEdit.text(self.Timeoutbutton)) ## in sec
-        loaded = savedPara(MW_pw, MW_trig, MW_samplingmode, Laser_pw, \
-                                        DAQ_Nsample, DAQ_timeout)
-        loaded.loadParameters()
-        loaded.export()
+        # loaded = savedPara(MW_pw, MW_trig, MW_samplingmode, Laser_pw, \
+        #                                 DAQ_Nsample, DAQ_timeout)
+        # loaded.loadParameters()
+        # loaded.export()
 
-    def onclick_addcolumn(self):
-        self.table_widget.insertColumn(0)
+        # for i in range(self.rows):
+        #     value = QTableWidgetItem("__________".format(i, 0))
+        #     self.table_widget.setItem(i, 0, value)
+        # return
+
+
+    def onclick_saveseq(self):
+        datafilename = self.saveFileDialog()
+        file = open(datafilename, 'w', newline='') #begin the writing
+        tsv_writer = csv.writer(file, delimiter='\t') #defining the filetype as tab-separated
+        tsv_writer.writerow([now.strftime("%Y-%m-%d %H:%M")]) #includes date and time
+        tsv_writer.writerow([]) #blank row
+        tsv_writer.writerow(['Rows', '',*self.col_names])
+        # tsv_writer.writerow(['\t', self.col_names[0]+'\t', self.col_names[1]+'\t', self.col_names[2]+'\t', self.col_names[3]+'\t'])
         for i in range(self.rows):
-            value = QTableWidgetItem("__________".format(i, 0))
-            self.table_widget.setItem(i, 0, value)
+            tsv_writer.writerow([self.row_names[i], self.seqarray[i][0], self.seqarray[i][1], self.seqarray[i][2], self.seqarray[i][3]])
+        print('Saved!')
 
-    def onclick_dialog(self):
-        text, ok = QInputDialog().getMultiLineText(self, "QInputDialog().getText()",
-                                          "User name:")
-        if ok and text:
-            print('text=', text)
-        
+
+        file.close()
+
 
     def setmode(self, text):
         if text == 'a':
@@ -282,129 +408,240 @@ class PulseInputButtons(QWidget):
         if text == 'c':
             self.colormap = self.rainbow
 
+
+    def onitemchanged(self):
+        col = self.table_widget.currentColumn()
+        row = self.table_widget.currentRow()
+        text = self.table_widget.item(row, col).text()
+
+        value = None
+
+        try:
+            value = float(text)
+        except:
+            pass
+
+
+        if value is None:
+            try:
+                value = getattr(self, text).text()
+            except:
+                pass
+        #
+        if value is not None:
+            self.seqarray[row, col] = value
+
+        print(self.seqarray)
+
     @pyqtSlot(QPoint)
     def on_customContextMenuRequested(self, pos):
-        print(pos)
         it = self.table_widget.itemAt(pos)
         if it is None:
             return
-        # print(it, it.row())
-        # # print(it, pos)
-        # if it is None: return
-        # c = it.column()
-        # # item_range = QTableWidgetSelectionRange(0, c, self.table_widget.rowCount()-1 , c)
-        # # self.table_widget.setRangeSelected(item_range, True)
         #
-        rowname = self.table_widget.verticalHeaderItem(it.row()).text()
         menu = QMenu()
-
-        if it.row() == 0:
-            delay_action = menu.addAction("Delay Time")
-            lo_action = menu.addAction('__________')
-            delete_column_action = menu.addAction('Delete Column')
-            add_column_action = menu.addAction('Add Column')
-            action = menu.exec_(self.table_widget.viewport().mapToGlobal(pos))
-            if action == delay_action:
-                value = QTableWidgetItem("---------------".format(it.row(), it.column()))
-                self.table_widget.setItem(it.row(), it.column(), value)
-                return
-            if action == lo_action:
-                value = QTableWidgetItem("__________".format(it.row(), it.column()))
-                print(value)
-                self.table_widget.setItem(it.row(), it.column(), value)
-                return
-            if action == delete_column_action:
-                self.table_widget.removeColumn(it.column())
-            if action == add_column_action:
-                self.table_widget.insertColumn(it.column())
-                for i in range(self.rows):
-                    value = QTableWidgetItem("__________".format(i, it.column() - 1))
-                    self.table_widget.setItem(i, it.column() - 1, value)
-
-
-        hilorows = [2, 3, 4, 7, 8, 10, 11, 13, 14]
-        if it.row() in hilorows:
-            lo_action = menu.addAction("__________")
-            hi_action = menu.addAction('---------------')
-            delete_column_action = menu.addAction('Delete Column')
-            add_column_action = menu.addAction('Add Column')
-            action = menu.exec_(self.table_widget.viewport().mapToGlobal(pos))
-            if action == hi_action:
-                value = QTableWidgetItem("---------------".format(it.row(), it.column()))
-                self.table_widget.setItem(it.row(), it.column(), value)
-                return
-            if action == lo_action:
-                value = QTableWidgetItem("__________".format(it.row(), it.column()))
-                print(value)
-                self.table_widget.setItem(it.row(), it.column(), value)
-                return
-            if action == delete_column_action:
-                self.table_widget.removeColumn(it.column())
-            if action == add_column_action:
-                self.table_widget.insertColumn(it.column())
-                for i in range(self.rows):
-                    value = QTableWidgetItem("__________".format(i, it.column() - 1))
-                    self.table_widget.setItem(i, it.column() - 1, value)
+        newrow = [-999, -999, -999, -999]
+        if it.row() % 4 == 0:
+            if it.column() == 0:
+                add_pulse_action = menu.addAction('Add Pulse')
+                delete_pulse_action = menu.addAction('Delete Pulse')
+                action = menu.exec_(self.table_widget.viewport().mapToGlobal(pos))
+                if action == add_pulse_action:
+                    self.row_names = self.row_names + self.row_name
+                    self.table_widget.insertRow(it.row()+4)
+                    self.table_widget.insertRow(it.row()+4)
+                    self.table_widget.insertRow(it.row()+4)
+                    self.table_widget.insertRow(it.row()+4)
+                    self.rows = self.rows + 4
+                    self.table_widget.setVerticalHeaderLabels(self.row_names)
+                    self.seqarray = np.insert(self.seqarray, it.row()+4, newrow, axis=0)
+                    self.seqarray = np.insert(self.seqarray, it.row()+4, newrow, axis=0)
+                    self.seqarray = np.insert(self.seqarray, it.row()+4, newrow, axis=0)
+                    self.seqarray = np.insert(self.seqarray, it.row()+4, newrow, axis=0)
                     return
 
+                if action == delete_pulse_action:
+                    self.table_widget.removeRow(it.row()+1)
+                    self.seqarray = np.delete(self.seqarray, it.row(), axis=0)
+                    self.seqarray = np.delete(self.seqarray, it.row(), axis=0)
+                    self.seqarray = np.delete(self.seqarray, it.row(), axis=0)
+                    self.seqarray = np.delete(self.seqarray, it.row(), axis=0)
 
+                    self.table_widget.removeRow(it.row()+1)
+                    self.table_widget.removeRow(it.row()+1)
+                    self.table_widget.removeRow(it.row())
+                    self.row_names = self.row_names[:-4]
+                    self.rows = self.rows - 4
+                    self.table_widget.setVerticalHeaderLabels(self.row_names)
+                    return
 
-        if it.row() == 5:
-            self.row5 = menu.addAction("~~~~~~")
+        if it.row() % 4 == 1:
+            if it.column() == 0:
+                add_pulse_action = menu.addAction('Add Pulse')
+                delete_pulse_action = menu.addAction('Delete Pulse')
+                divider = menu.addAction('----------')
+                T1_action = menu.addAction('T1')
+                action = menu.exec_(self.table_widget.viewport().mapToGlobal(pos))
+
+                if action == add_pulse_action:
+                    self.row_names = self.row_names + self.row_name
+                    self.table_widget.insertRow(it.row()+3)
+                    self.table_widget.insertRow(it.row()+3)
+                    self.table_widget.insertRow(it.row()+3)
+                    self.table_widget.insertRow(it.row()+3)
+                    self.rows = self.rows + 4
+                    self.seqarray = np.insert(self.seqarray, it.row()+3, newrow, axis=0)
+                    self.seqarray = np.insert(self.seqarray, it.row()+3, newrow, axis=0)
+                    self.seqarray = np.insert(self.seqarray, it.row()+3, newrow, axis=0)
+                    self.seqarray = np.insert(self.seqarray, it.row()+3, newrow, axis=0)
+                    self.table_widget.setVerticalHeaderLabels(self.row_names)
+                    return
+
+                if action == delete_pulse_action:
+                    self.seqarray = np.delete(self.seqarray, it.row()-1, axis=0)
+                    self.seqarray = np.delete(self.seqarray, it.row()-1, axis=0)
+                    self.seqarray = np.delete(self.seqarray, it.row()-1, axis=0)
+                    self.seqarray = np.delete(self.seqarray, it.row()-1, axis=0)
+
+                    self.table_widget.removeRow(it.row()-1)
+                    self.table_widget.removeRow(it.row()+1)
+                    self.table_widget.removeRow(it.row()+1)
+                    self.table_widget.removeRow(it.row())
+                    self.row_names = self.row_names[:-4]
+                    self.rows = self.rows - 4
+                    self.table_widget.setVerticalHeaderLabels(self.row_names)
+                    return
+
+                if action ==T1_action:
+                    value = QTableWidgetItem('T1'.format(it.row(), it.column()))
+                    self.table_widget.setItem(it.row(), it.column(), value)
+                    return
+
+            else:
+                add_pulse_action = menu.addAction('Add Pulse')
+                delete_pulse_action = menu.addAction('Delete Pulse')
+                divider = menu.addAction('----------')
+                Ttrig_action = menu.addAction('T1')
+                action = menu.exec_(self.table_widget.viewport().mapToGlobal(pos))
+
+                if action == add_pulse_action:
+                    self.row_names = self.row_names + self.row_name
+                    self.table_widget.insertRow(it.row() + 3)
+                    self.table_widget.insertRow(it.row() + 3)
+                    self.table_widget.insertRow(it.row() + 3)
+                    self.table_widget.insertRow(it.row() + 3)
+                    self.rows = self.rows + 4
+                    self.seqarray = np.insert(self.seqarray, it.row() + 3, newrow, axis=0)
+                    self.seqarray = np.insert(self.seqarray, it.row() + 3, newrow, axis=0)
+                    self.seqarray = np.insert(self.seqarray, it.row() + 3, newrow, axis=0)
+                    self.seqarray = np.insert(self.seqarray, it.row() + 3, newrow, axis=0)
+                    self.table_widget.setVerticalHeaderLabels(self.row_names)
+                    return
+
+                if action == delete_pulse_action:
+                    self.seqarray = np.delete(self.seqarray, it.row() - 1, axis=0)
+                    self.seqarray = np.delete(self.seqarray, it.row() - 1, axis=0)
+                    self.seqarray = np.delete(self.seqarray, it.row() - 1, axis=0)
+                    self.seqarray = np.delete(self.seqarray, it.row() - 1, axis=0)
+
+                    self.table_widget.removeRow(it.row() - 1)
+                    self.table_widget.removeRow(it.row() + 1)
+                    self.table_widget.removeRow(it.row() + 1)
+                    self.table_widget.removeRow(it.row())
+                    self.row_names = self.row_names[:-4]
+                    self.rows = self.rows - 4
+                    self.table_widget.setVerticalHeaderLabels(self.row_names)
+                    return
+
+                if action == Ttrig_action:
+                    value = QTableWidgetItem('T_Trigger'.format(it.row(), it.column()))
+                    self.table_widget.setItem(it.row(), it.column(), value)
+                    return
+
+        if it.row() % 4 == 2:
+            action0 = menu.addAction('Continue')
+            action1 = menu.addAction('Stop')
+            action2 = menu.addAction('Loop')
+            action3 = menu.addAction('End Loop')
+            action4 = menu.addAction('')
+            add_pulse_action = menu.addAction('Add Pulse')
+            delete_pulse_action = menu.addAction('Delete Pulse')
+
             action = menu.exec_(self.table_widget.viewport().mapToGlobal(pos))
-            if action == self.row5:
-                value = QTableWidgetItem("~~~~~~~".format(it.row(), it.column()))
+
+            if action == add_pulse_action:
+                self.row_names = self.row_names + self.row_name
+                self.table_widget.insertRow(it.row() + 2)
+                self.table_widget.insertRow(it.row() + 2)
+                self.table_widget.insertRow(it.row() + 2)
+                self.table_widget.insertRow(it.row() + 2)
+                self.rows = self.rows + 4
+                self.table_widget.setVerticalHeaderLabels(self.row_names)
+                self.seqarray = np.insert(self.seqarray, it.row() + 2, newrow, axis=0)
+                self.seqarray = np.insert(self.seqarray, it.row() + 2, newrow, axis=0)
+                self.seqarray = np.insert(self.seqarray, it.row() + 2, newrow, axis=0)
+                self.seqarray = np.insert(self.seqarray, it.row() + 2, newrow, axis=0)
+                return
+
+            if action == delete_pulse_action:
+                self.seqarray = np.delete(self.seqarray, it.row()-2, axis=0)
+                self.seqarray = np.delete(self.seqarray, it.row()-2, axis=0)
+                self.seqarray = np.delete(self.seqarray, it.row()-2, axis=0)
+                self.seqarray = np.delete(self.seqarray, it.row()-2, axis=0)
+
+                self.table_widget.removeRow(it.row() - 2)
+                self.table_widget.removeRow(it.row() - 1)
+                self.table_widget.removeRow(it.row() + 1)
+                self.table_widget.removeRow(it.row())
+                self.row_names = self.row_names[:-4]
+                self.rows = self.rows - 4
+                self.table_widget.setVerticalHeaderLabels(self.row_names)
+                return
+
+            if action == action0:
+                value = QTableWidgetItem('Continue'.format(it.row(), it.column()))
                 self.table_widget.setItem(it.row(), it.column(), value)
                 return
 
-        xyphaserow = [1, 6, 12]
-        if it.row() in xyphaserow:
-            self.row6posx = menu.addAction('+X')
-            self.row6negx = menu.addAction('-X')
-            self.row6posy = menu.addAction('+Y')
-            self.row6negy = menu.addAction('-Y')
+            if action == action1:
+                value = QTableWidgetItem('Stop'.format(it.row(), it.column()))
+                self.table_widget.setItem(it.row(), it.column(), value)
+
+                return
+
+        if it.row() % 4 == 3:
+            add_pulse_action = menu.addAction('Add Pulse')
+            delete_pulse_action = menu.addAction('Delete Pulse')
             action = menu.exec_(self.table_widget.viewport().mapToGlobal(pos))
-            if action == self.row6posx:
-                value = QTableWidgetItem("+X".format(it.row(), it.column()))
-                self.table_widget.setItem(it.row(), it.column(), value)
+
+            if action == add_pulse_action:
+                self.row_names = self.row_names + self.row_name
+                self.table_widget.insertRow(it.row() + 1)
+                self.table_widget.insertRow(it.row() + 1)
+                self.table_widget.insertRow(it.row() + 1)
+                self.table_widget.insertRow(it.row() + 1)
+                self.rows = self.rows + 4
+                self.table_widget.setVerticalHeaderLabels(self.row_names)
+                self.seqarray = np.insert(self.seqarray, it.row() + 1, newrow, axis=0)
+                self.seqarray = np.insert(self.seqarray, it.row() + 1, newrow, axis=0)
+                self.seqarray = np.insert(self.seqarray, it.row() + 1, newrow, axis=0)
+                self.seqarray = np.insert(self.seqarray, it.row() + 1, newrow, axis=0)
                 return
 
-            if action == self.row6posy:
-                value = QTableWidgetItem("+Y".format(it.row(), it.column()))
-                self.table_widget.setItem(it.row(), it.column(), value)
+            if action == delete_pulse_action:
+                self.seqarray = np.delete(self.seqarray, it.row()-1, axis=0)
+                self.seqarray = np.delete(self.seqarray, it.row()-1, axis=0)
+                self.seqarray = np.delete(self.seqarray, it.row()-1, axis=0)
+                self.seqarray = np.delete(self.seqarray, it.row()-1, axis=0)
+
+                self.table_widget.removeRow(it.row() - 3)
+                self.table_widget.removeRow(it.row() - 2)
+                self.table_widget.removeRow(it.row() - 1)
+                self.table_widget.removeRow(it.row())
+                self.row_names = self.row_names[:-4]
+                self.rows = self.rows - 4
+                self.table_widget.setVerticalHeaderLabels(self.row_names)
                 return
-
-            if action == self.row6negx:
-                value = QTableWidgetItem("-X".format(it.row(), it.column()))
-                self.table_widget.setItem(it.row(), it.column(), value)
-                return
-
-            if action == self.row6negy:
-                value = QTableWidgetItem("-Y".format(it.row(), it.column()))
-                self.table_widget.setItem(it.row(), it.column(), value)
-                return
-
-
-        # if rowname == 'Delay':
-        #     delaytable_action = menu.addAction('Add Delay Table')
-
-
-class CustomDialog(QDialog):
-
-    def __init__(self, *args, **kwargs):
-        super(CustomDialog, self).__init__(*args, **kwargs)
-
-        self.setWindowTitle("HELLO!")
-
-        QBtn = QDialogButtonBox.Ok | QDialogButtonBox.Cancel
-
-        self.buttonBox = QDialogButtonBox(QBtn)
-        self.buttonBox.accepted.connect(self.accept)
-        self.buttonBox.rejected.connect(self.reject)
-
-        self.layout = QVBoxLayout()
-        self.layout.addWidget(self.buttonBox)
-        self.setLayout(self.layout)
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
@@ -412,12 +649,8 @@ if __name__ == '__main__':
     ex = MainGui()
     sys.exit(app.exec_())
 
+#TODO: implement instruction type list tracking and inputting into
+#TODO figure out how to convert sums of times into values
+#TODO: finish menu options for instruction types
 
-#TODO: add functionality to all buttons
-#TODO: make sure we have the layout correct (ask Zeppelin what buttons are missing or are formatted wrong, etc.)
-#TODO: set up read/write functionality for all boxes
-#TODO: set up save/load for all boxes
-#TODO: figure out how to make pulse sequence widget responsive to add/remove column/row
-
-#Button on click function added
 #TODO: test in real system

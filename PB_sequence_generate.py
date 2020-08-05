@@ -98,7 +98,7 @@ class pbSequence:
         R_delay = time_floor(readout_D)* CYCLE
         T_startdelay = 1*us ## 60 cycles
         T_mw = time_floor((t_halftau*(2*8*num - 1) + acqt + 2*t_90*(8*num + 1))* ns)* CYCLE
-        
+
         T_first = MW_delay + T_mw + T_startdelay
         
         AOMchannel = PBchannel(1, [T_first, T_first*2 + Tl],[Tl, Tl])
