@@ -652,5 +652,6 @@ if __name__ == '__main__':
 #TODO: implement instruction type list tracking and inputting into
 #TODO figure out how to convert sums of times into values
 #TODO: finish menu options for instruction types
+#TODO: switch from numpy arrays to list of lists
 
 #TODO: test in real system
