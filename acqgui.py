@@ -36,6 +36,7 @@ class plotControl(QWidget):
         self.nstart = 1
         self.nstop = 100
         self.dn = 1
+        self.resumelabel = 0
 
         self.initUI()
 
@@ -61,19 +62,30 @@ class plotControl(QWidget):
 
     @pyqtSlot()
     def on_click_start(self):
-        self.thread = AcquisitionThread(self.nstart, self.nstop, self.dn)
-        self.thread.start()
-        self.thread.signal.connect(self.on_thread_done)
+        if self.resumelabel == 0:
+            data = []
+            self.thread = AcquisitionThread(data, self.nstart, self.nstop, self.dn)
+            self.thread.start()
+            self.thread.signal.connect(self.on_thread_done)
+        else:
+            data = self.thread.dataQ()
+            self.thread = AcquisitionThread(data, self.nstart, self.nstop, self.dn)
+            self.thread.start()
+            self.thread.signal.connect(self.on_thread_done)
+            self.resumelabel = 0
+
+
 
     def on_click_pause(self):
         self.nstart = self.thread.halt()
+        self.resumelabel = 1
     
     def on_click_stop(self):
         self.thread.halt()
 
     def on_thread_done(self, data):
-        self.data = np.array(data) #sets data to a global variable so we can call it in other functions
-        datax = np.arange(self.nstart, self.nstart + self.dn* len(self.data), 1)
+        data = np.array(data) #sets data to a global variable so we can call it in other functions
+        datax = np.arange(self.nstart, self.nstart + self.dn* len(data), 1)
         self.plot.plot(datax, data) #uses the QWidget class for plotting
 
 
@@ -82,8 +94,9 @@ class plotControl(QWidget):
 class AcquisitionThread(QThread):
     signal = pyqtSignal('PyQt_PyObject')
 
-    def __init__(self, nstart, nstop, dn):
+    def __init__(self, data, nstart, nstop, dn):
         QThread.__init__(self)
+        self.data = data
         self.nstart = nstart
         self.ncurrent = nstart
         self.nstop = nstop
@@ -92,13 +105,13 @@ class AcquisitionThread(QThread):
 
     def run(self):
         n_list = np.arange(self.nstart, self.nstop, self.dn)
-        data = []
         for n in n_list:
             self.ncurrent = n
             while self.condition == 1:
-                data.append(self.ncurrent*2)
-                time.sleep(2)
-                self.signal.emit(data)
+                self.data.append(np.random.rand())
+                time.sleep(1)
+                self.signal.emit(self.data)
+            if self.condition != 1:
                 break
                 
 
@@ -106,6 +119,9 @@ class AcquisitionThread(QThread):
     def halt(self):
         self.condition = 0
         return self.ncurrent
+
+    def dataQ(self):
+        return self.data
 
 ## plotting class
 class PlotCanvas(FigureCanvas): #this creates a matplotlib canvas and defines some plotting aspects
